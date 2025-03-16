@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35527.113
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DankDB", "DankDB.csproj", "{9EC2F377-76B1-4248-B3C2-36540E26DE92}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "..\Test\Test.csproj", "{F382A224-02F1-4C97-A308-AB31E56CA67C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9EC2F377-76B1-4248-B3C2-36540E26DE92}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9EC2F377-76B1-4248-B3C2-36540E26DE92}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9EC2F377-76B1-4248-B3C2-36540E26DE92}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9EC2F377-76B1-4248-B3C2-36540E26DE92}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F382A224-02F1-4C97-A308-AB31E56CA67C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F382A224-02F1-4C97-A308-AB31E56CA67C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F382A224-02F1-4C97-A308-AB31E56CA67C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F382A224-02F1-4C97-A308-AB31E56CA67C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
