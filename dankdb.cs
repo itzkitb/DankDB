@@ -1,14 +1,19 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
 
+// feelsDankDataBaseMan
+// Author: ItzKITb (github.com/CATONPRO)
+// GNU license
+// Version 10
+
 namespace DankDB
 {
     public class Manager
     {
-        private static LruCache<string, CacheItem> cache = new LruCache<string, CacheItem>(100);
+        private static LruCache<string, CacheItem> cache = new LruCache<string, CacheItem>(1000);
         private static ConcurrentDictionary<string, SemaphoreSlim> fileLocks = new();
 
-        public Manager(int cache_size = 100)
+        public Manager(int cache_size = 1000)
         {
             cache = new LruCache<string, CacheItem>(cache_size);
         }
