@@ -2,12 +2,20 @@
 using System.Numerics;
 using System.Text.Json;
 
-// Version 11
+// Version 12
 // Created by ItzKITb
 // GNU license
 
 namespace DankDB
 {
+    class Worker
+    {
+        public static LruCache<string, CacheItem> cache = new LruCache<string, CacheItem>(1000);
+        public static ConcurrentDictionary<string, SemaphoreSlim> file_locks = new();
+        public static bool debug = false;
+        public static DateTime start = DateTime.UtcNow;
+    }
+
     /// <summary>
     /// Database statistics
     /// </summary>
@@ -37,6 +45,10 @@ namespace DankDB
         /// Total renames
         /// </summary>
         public static BigInteger renames { internal set; get; } = 0;
+        /// <summary>
+        /// Total files checks
+        /// </summary>
+        public static BigInteger checks { internal set; get; } = 0;
     }
 
     /// <summary>
@@ -44,33 +56,17 @@ namespace DankDB
     /// </summary>
     public class Manager
     {
-        private static LruCache<string, CacheItem> cache = new LruCache<string, CacheItem>(1000);
-        private static ConcurrentDictionary<string, SemaphoreSlim> fileLocks = new();
-
-        /// <summary>
-        /// Initializing a class (Optional)
-        /// </summary>
-        /// /// <param name="cache_size"></param>
-        public Manager(int cache_size = 1000)
-        {
-            cache = new LruCache<string, CacheItem>(cache_size);
-        }
-
-        private class CacheItem
-        {
-            public Dictionary<string, JsonElement> Data { get; set; } = new();
-            public DateTime LastModified { get; set; }
-        }
-
         /// <summary>
         /// Create a database and write empty data into it
         /// </summary>
         /// <param name="path"></param>
         public static void CreateDatabase(string path)
         {
+            Statistics.checks++;
             if (!File.Exists(path))
             {
                 File.WriteAllText(path, "{}");
+                Debugger.Write($"[Sync] Database \"{path}\" created.");
                 Statistics.writes++;
             }
         }
@@ -83,13 +79,14 @@ namespace DankDB
         /// <param name="data"></param>
         public static void Save(string path, string key, object data)
         {
-            var semaphore = fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             semaphore.Wait();
             try
             {
                 var cacheItem = LoadCacheItem(path);
-                cacheItem.Data[key] = JsonSerializer.SerializeToElement(data);
+                cacheItem.data[key] = JsonSerializer.SerializeToElement(data);
                 SaveCacheItem(path, cacheItem);
+                Debugger.Write($"[Sync] Data \"{data}\" in key \"{key}\" is stored in \"{path}\".");
             }
             finally
             {
@@ -105,12 +102,13 @@ namespace DankDB
         /// <returns>Data in the database key</returns>
         public static T Get<T>(string path, string key)
         {
-            var semaphore = fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             semaphore.Wait();
             try
             {
                 var cacheItem = LoadCacheItem(path);
-                return cacheItem.Data.TryGetValue(key, out var value)
+                Debugger.Write($"[Sync] The key \"{key}\" from the file \"{path}\" was successfully retrieved.");
+                return cacheItem.data.TryGetValue(key, out var value)
                     ? JsonSerializer.Deserialize<T>(value.GetRawText())
                     : default;
             }
@@ -127,15 +125,16 @@ namespace DankDB
         /// <param name="key"></param>
         public static void DeleteKey(string path, string key)
         {
-            var semaphore = fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             semaphore.Wait();
             try
             {
                 var cacheItem = LoadCacheItem(path);
-                if (cacheItem.Data.Remove(key))
+                if (cacheItem.data.Remove(key))
                 {
                     Statistics.removes++;
                     SaveCacheItem(path, cacheItem);
+                    Debugger.Write($"[Sync] Key \"{key}\" in file \"{path}\" removed.");
                 }
             }
             finally
@@ -152,17 +151,18 @@ namespace DankDB
         /// <param name="newKey"></param>
         public static void RenameKey(string path, string oldKey, string newKey)
         {
-            var semaphore = fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             semaphore.Wait();
             try
             {
                 var cacheItem = LoadCacheItem(path);
-                if (cacheItem.Data.TryGetValue(oldKey, out var value))
+                if (cacheItem.data.TryGetValue(oldKey, out var value))
                 {
-                    cacheItem.Data.Remove(oldKey);
-                    cacheItem.Data[newKey] = value;
+                    cacheItem.data.Remove(oldKey);
+                    cacheItem.data[newKey] = value;
                     Statistics.renames++;
                     SaveCacheItem(path, cacheItem);
+                    Debugger.Write($"[Sync] The key \"{oldKey}\" in the file \"{path}\" has been renamed to \"{newKey}\".");
                 }
             }
             finally
@@ -173,15 +173,20 @@ namespace DankDB
 
         private static CacheItem LoadCacheItem(string path)
         {
+            Statistics.checks++;
             var fileInfo = new FileInfo(path);
+            fileInfo.Refresh();
             var currentLastModified = fileInfo.Exists ? fileInfo.LastWriteTimeUtc : DateTime.MinValue;
 
-            if (cache.TryGet(path, out var cachedItem) &&
-                cachedItem.LastModified == currentLastModified)
+            if (Worker.cache.TryGet(path, out var cachedItem) &&
+                cachedItem.last_modified.ToString() == currentLastModified.ToString())
             {
                 Statistics.cache_reads++;
+                Debugger.Write($"[Sync] Data for file \"{path}\" loaded from cache.");
                 return cachedItem;
             }
+
+            Debugger.Write($"[Sync] Loading from file. ({(cachedItem == null ? "null" : cachedItem)}, {(cachedItem == null ? "null" : cachedItem.last_modified == currentLastModified)}, {(cachedItem == null ? "null" : cachedItem.last_modified)}, {currentLastModified})");
 
             Dictionary<string, JsonElement> data;
             Statistics.reads++;
@@ -195,19 +200,25 @@ namespace DankDB
                 data = new Dictionary<string, JsonElement>();
             }
 
-            var newCacheItem = new CacheItem { Data = data, LastModified = currentLastModified };
-            cache.AddOrUpdate(path, newCacheItem);
+            var newCacheItem = new CacheItem { data = data, last_modified = currentLastModified };
+            Worker.cache.AddOrUpdate(path, newCacheItem);
+            Debugger.Write("[Sync] Loaded.");
             return newCacheItem;
         }
 
         private static void SaveCacheItem(string path, CacheItem cacheItem)
         {
             using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-            JsonSerializer.Serialize(stream, cacheItem.Data);
+            JsonSerializer.Serialize(stream, cacheItem.data);
             Statistics.writes++;
-            cacheItem.LastModified = new FileInfo(path).LastWriteTimeUtc;
-            cache.AddOrUpdate(path, cacheItem);
+
+            var fileInfo = new FileInfo(path);
+            fileInfo.Refresh();
+            cacheItem.last_modified = fileInfo.LastWriteTimeUtc;
+
+            Worker.cache.AddOrUpdate(path, cacheItem);
             Statistics.cache_writes++;
+            Debugger.Write($"[Sync] File \"{path}\" saved.");
         }
     }
 
@@ -216,33 +227,17 @@ namespace DankDB
     /// </summary>
     public class AsyncManager
     {
-        private static LruCache<string, CacheItem> cache = new LruCache<string, CacheItem>(100);
-        private static ConcurrentDictionary<string, SemaphoreSlim> file_locks = new();
-        
-        /// <summary>
-        /// Initializing a class (Optional)
-        /// </summary>
-        /// <param name="cache_size"></param>
-        public AsyncManager(int cache_size = 100)
-        {
-            cache = new LruCache<string, CacheItem>(cache_size);
-        }
-
-        private class CacheItem
-        {
-            public Dictionary<string, JsonElement> data { get; set; } = new();
-            public DateTime last_modified { get; set; }
-        }
-
         /// <summary>
         /// Create a database and write empty data into it
         /// </summary>
         /// <param name="path"></param>
         public static async Task CreateDatabaseAsync(string path)
         {
+            Statistics.checks++;
             if (!File.Exists(path))
             {
                 await File.WriteAllTextAsync(path, "{}");
+                Debugger.Write($"[Async] Database \"{path}\" created.");
                 Statistics.writes++;
             }
         }
@@ -255,13 +250,14 @@ namespace DankDB
         /// <param name="data"></param>
         public static async Task SaveAsync(string path, string key, object data)
         {
-            var semaphore = file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
                 var cacheItem = await LoadCacheItemAsync(path);
                 cacheItem.data[key] = JsonSerializer.SerializeToElement(data);
                 await SaveCacheItemAsync(path, cacheItem);
+                Debugger.Write($"[Async] Data \"{data}\" in key \"{key}\" is stored in \"{path}\".");
             }
             finally
             {
@@ -278,11 +274,12 @@ namespace DankDB
         /// <returns>Data in the database key</returns>
         public static async Task<T> GetAsync<T>(string path, string key)
         {
-            var semaphore = file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
                 var cacheItem = await LoadCacheItemAsync(path);
+                Debugger.Write($"[Async] The key \"{key}\" from the file \"{path}\" was successfully retrieved.");
                 return cacheItem.data.TryGetValue(key, out var value)
                     ? JsonSerializer.Deserialize<T>(value.GetRawText())
                     : default;
@@ -300,7 +297,7 @@ namespace DankDB
         /// <param name="key"></param>
         public static async Task DeleteKeyAsync(string path, string key)
         {
-            var semaphore = file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
@@ -309,6 +306,7 @@ namespace DankDB
                 {
                     await SaveCacheItemAsync(path, cacheItem);
                     Statistics.removes++;
+                    Debugger.Write($"[Async] Key \"{key}\" in file \"{path}\" removed.");
                 }
             }
             finally
@@ -325,7 +323,7 @@ namespace DankDB
         /// <param name="newKey"></param>
         public static async Task RenameKeyAsync(string path, string oldKey, string newKey)
         {
-            var semaphore = file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
@@ -336,6 +334,7 @@ namespace DankDB
                     cacheItem.data[newKey] = value;
                     Statistics.renames++;
                     await SaveCacheItemAsync(path, cacheItem);
+                    Debugger.Write($"[Async] The key \"{oldKey}\" in the file \"{path}\" has been renamed to \"{newKey}\".");
                 }
             }
             finally
@@ -346,15 +345,20 @@ namespace DankDB
 
         private static async Task<CacheItem> LoadCacheItemAsync(string path)
         {
+            Statistics.checks++;
             var fileInfo = new FileInfo(path);
+            fileInfo.Refresh();
             var currentLastModified = fileInfo.Exists ? fileInfo.LastWriteTimeUtc : DateTime.MinValue;
 
-            if (cache.TryGet(path, out var cachedItem) &&
-                cachedItem.last_modified == currentLastModified)
+            if (Worker.cache.TryGet(path, out var cachedItem) &&
+                cachedItem.last_modified.ToString() == currentLastModified.ToString())
             {
                 Statistics.cache_reads++;
+                Debugger.Write($"[Async] Data for file \"{path}\" loaded from cache.");
                 return cachedItem;
             }
+
+            Debugger.Write($"[Async] Loading data from file \"{path}\". ({(cachedItem == null ? "null" : cachedItem)}, {(cachedItem == null ? "null" : cachedItem.last_modified == currentLastModified)}, {(cachedItem == null ? "null" : cachedItem.last_modified)}, {currentLastModified})");
 
             Dictionary<string, JsonElement> data;
             Statistics.reads++;
@@ -369,7 +373,8 @@ namespace DankDB
             }
 
             var newCacheItem = new CacheItem { data = data, last_modified = currentLastModified };
-            cache.AddOrUpdate(path, newCacheItem);
+            Worker.cache.AddOrUpdate(path, newCacheItem);
+            Debugger.Write("[Async] Loaded.");
             return newCacheItem;
         }
 
@@ -378,9 +383,14 @@ namespace DankDB
             await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true);
             await JsonSerializer.SerializeAsync(stream, cacheItem.data);
             Statistics.writes++;
-            cacheItem.last_modified = new FileInfo(path).LastWriteTimeUtc;
-            cache.AddOrUpdate(path, cacheItem);
+            Statistics.checks++;
+            var fileInfo = new FileInfo(path);
+            fileInfo.Refresh();
+            cacheItem.last_modified = fileInfo.LastWriteTimeUtc;
+
+            Worker.cache.AddOrUpdate(path, cacheItem);
             Statistics.cache_writes++;
+            Debugger.Write($"[Async] File \"{path}\" saved.");
         }
     }
 
@@ -538,6 +548,20 @@ namespace DankDB
                 Key = key;
                 Value = value;
             }
+        }
+    }
+
+    class CacheItem
+    {
+        public Dictionary<string, JsonElement> data { get; set; } = new();
+        public DateTime last_modified { get; set; }
+    }
+
+    class Debugger
+    {
+        public static void Write(string text)
+        {
+            if (Worker.debug) Console.WriteLine($"[DankDB debug] [{(DateTime.UtcNow - Worker.start).TotalMicroseconds}]: {text}"); 
         }
     }
 }
