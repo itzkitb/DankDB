@@ -16,48 +16,40 @@
 
 A 1 megabyte database is used for testing
 
-*HDD* - 2 TB Seagate BarraCuda (ST2000DM005) [SATA III, 6 gbit/с, 5400 rpm, cache memory - 256mb]
+*HDD* - 2 TB Seagate BarraCuda (ST2000DM005) [SATA III, 6 gbit/sec, 5400 rpm, cache memory - 256mb]
 
 *SSD* - 120 GB 2.5" SATA Drive HP S700 (2DP97AA#ABB) [SATA, read - 550 MB/sec, Write - 480 MB/sec, 3D NAND 3 bit TLC, TBW - 70 TB]
-#### 1️⃣ The first request (Downloading data from the database)
+#### ⏲ The first request (Downloading data from the database)
 - Synchronous data acquisition
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 2,55ms
+> - SSD: 2,45ms
 - Asynchronous data acquisition
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 2,23ms
+> - SSD: 2,33ms
 - Synchronous data saving
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 8,39ms
+> - SSD: 8,30ms
 - Asynchronous data saving
-> - HDD: 0ms
-> - SSD: 0ms
-#### 2️⃣ The second request (Downloading data from the cache)
+> - HDD: 8,73ms
+> - SSD: 8,56ms
+
+#### 🚀 The second request (Downloading data from the cache)
 - Synchronous data acquisition
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 1,14ms
+> - SSD: 1,26ms
 - Asynchronous data acquisition
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 1,01ms
+> - SSD: 1,15ms
 - Synchronous data saving
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 6,65ms
+> - SSD: 6,51ms
 - Asynchronous data saving
-> - HDD: 0ms
-> - SSD: 0ms
-#### 3️⃣ Stress test
-- 1 million asynchronous reads and writes of random data 
-> - HDD: 0ms
-> - SSD: 0ms
-- 1 million synchronous reads and writes of random data 
-> - HDD: 0ms
-> - SSD: 0ms
+> - HDD: 6,80ms
+> - SSD: 6,01ms
 
 ### ℹ️ Library info
 Current version: 12
 
 Release date: 22.03.25
-
-
 
 *FeelsDankDBMan*

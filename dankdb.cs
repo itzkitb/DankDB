@@ -2,18 +2,18 @@
 using System.Numerics;
 using System.Text.Json;
 
-// Version 12
+// Version 13
 // Created by ItzKITb
 // GNU license
 
 namespace DankDB
 {
-    class Worker
+    public class Worker
     {
-        public static LruCache<string, CacheItem> cache = new LruCache<string, CacheItem>(1000);
-        public static ConcurrentDictionary<string, SemaphoreSlim> file_locks = new();
+        public static LruCache<string, CacheItem> cache = new(1000);
+        internal static ConcurrentDictionary<string, SemaphoreSlim> file_locks = new();
         public static bool debug = false;
-        public static DateTime start = DateTime.UtcNow;
+        internal static DateTime start = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -144,6 +144,27 @@ namespace DankDB
         }
 
         /// <summary>
+        /// Check if such key exists in the database
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="key"></param>
+        public static bool IsContainsKey(string path, string key)
+        {
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            semaphore.Wait();
+            try
+            {
+                var cacheItem = LoadCacheItem(path);
+                Debugger.Write($"[Sync] The key \"{key}\" from the file \"{path}\" was successfully retrieved.");
+                return cacheItem.data.ContainsKey(key);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        /// <summary>
         /// Change the name of the key in the database
         /// </summary>
         /// <param name="path"></param>
@@ -231,7 +252,7 @@ namespace DankDB
         /// Create a database and write empty data into it
         /// </summary>
         /// <param name="path"></param>
-        public static async Task CreateDatabaseAsync(string path)
+        public static async Task CreateDatabase(string path)
         {
             Statistics.checks++;
             if (!File.Exists(path))
@@ -248,15 +269,15 @@ namespace DankDB
         /// <param name="path"></param>
         /// <param name="key"></param>
         /// <param name="data"></param>
-        public static async Task SaveAsync(string path, string key, object data)
+        public static async Task Save(string path, string key, object data)
         {
             var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
-                var cacheItem = await LoadCacheItemAsync(path);
+                var cacheItem = await LoadCacheItem(path);
                 cacheItem.data[key] = JsonSerializer.SerializeToElement(data);
-                await SaveCacheItemAsync(path, cacheItem);
+                await SaveCacheItem(path, cacheItem);
                 Debugger.Write($"[Async] Data \"{data}\" in key \"{key}\" is stored in \"{path}\".");
             }
             finally
@@ -272,13 +293,13 @@ namespace DankDB
         /// <param name="path"></param>
         /// <param name="key"></param>
         /// <returns>Data in the database key</returns>
-        public static async Task<T> GetAsync<T>(string path, string key)
+        public static async Task<T> Get<T>(string path, string key)
         {
             var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
-                var cacheItem = await LoadCacheItemAsync(path);
+                var cacheItem = await LoadCacheItem(path);
                 Debugger.Write($"[Async] The key \"{key}\" from the file \"{path}\" was successfully retrieved.");
                 return cacheItem.data.TryGetValue(key, out var value)
                     ? JsonSerializer.Deserialize<T>(value.GetRawText())
@@ -295,19 +316,40 @@ namespace DankDB
         /// </summary>
         /// <param name="path"></param>
         /// <param name="key"></param>
-        public static async Task DeleteKeyAsync(string path, string key)
+        public static async Task DeleteKey(string path, string key)
         {
             var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
-                var cacheItem = await LoadCacheItemAsync(path);
+                var cacheItem = await LoadCacheItem(path);
                 if (cacheItem.data.Remove(key))
                 {
-                    await SaveCacheItemAsync(path, cacheItem);
+                    await SaveCacheItem(path, cacheItem);
                     Statistics.removes++;
                     Debugger.Write($"[Async] Key \"{key}\" in file \"{path}\" removed.");
                 }
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Check if such key exists in the database
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="key"></param>
+        public static async Task<bool> IsContainsKey(string path, string key)
+        {
+            var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            semaphore.Wait();
+            try
+            {
+                var cacheItem = await LoadCacheItem(path);
+                Debugger.Write($"[Sync] The key \"{key}\" from the file \"{path}\" was successfully retrieved.");
+                return cacheItem.data.ContainsKey(key);
             }
             finally
             {
@@ -321,19 +363,19 @@ namespace DankDB
         /// <param name="path"></param>
         /// <param name="oldKey"></param>
         /// <param name="newKey"></param>
-        public static async Task RenameKeyAsync(string path, string oldKey, string newKey)
+        public static async Task RenameKey(string path, string oldKey, string newKey)
         {
             var semaphore = Worker.file_locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
             await semaphore.WaitAsync();
             try
             {
-                var cacheItem = await LoadCacheItemAsync(path);
+                var cacheItem = await LoadCacheItem(path);
                 if (cacheItem.data.TryGetValue(oldKey, out var value))
                 {
                     cacheItem.data.Remove(oldKey);
                     cacheItem.data[newKey] = value;
                     Statistics.renames++;
-                    await SaveCacheItemAsync(path, cacheItem);
+                    await SaveCacheItem(path, cacheItem);
                     Debugger.Write($"[Async] The key \"{oldKey}\" in the file \"{path}\" has been renamed to \"{newKey}\".");
                 }
             }
@@ -343,7 +385,7 @@ namespace DankDB
             }
         }
 
-        private static async Task<CacheItem> LoadCacheItemAsync(string path)
+        private static async Task<CacheItem> LoadCacheItem(string path)
         {
             Statistics.checks++;
             var fileInfo = new FileInfo(path);
@@ -378,7 +420,7 @@ namespace DankDB
             return newCacheItem;
         }
 
-        private static async Task SaveCacheItemAsync(string path, CacheItem cacheItem)
+        private static async Task SaveCacheItem(string path, CacheItem cacheItem)
         {
             await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true);
             await JsonSerializer.SerializeAsync(stream, cacheItem.data);
@@ -551,7 +593,7 @@ namespace DankDB
         }
     }
 
-    class CacheItem
+    public class CacheItem
     {
         public Dictionary<string, JsonElement> data { get; set; } = new();
         public DateTime last_modified { get; set; }
