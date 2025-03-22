@@ -1,5 +1,9 @@
 
-# ![DankDB logo](https://i.imgur.com/QlxO6Ob.png) DankDB
+<p align="center">
+    <img src="https://i.imgur.com/QlxO6Ob.png" alt="DankDB logo" width="300px">
+</p>
+
+# DankDB
 (*Dank database*)
 
 **DankDB** - is a powerful c# library for working with any JSON databases with LRU caching for the least access to the hard disk
