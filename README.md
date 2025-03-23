@@ -16,8 +16,6 @@
 - (Coming soon) Key availability check
 
 ### ⚡️ Speed and performance
-(*There will be results soon*)
-
 A 1 megabyte database is used for testing
 
 *HDD* - 2 TB Seagate BarraCuda (ST2000DM005) [SATA III, 6 gbit/sec, 5400 rpm, cache memory - 256mb]
