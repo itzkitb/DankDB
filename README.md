@@ -8,6 +8,10 @@
 
 **DankDB** - is a powerful c# library for working with any JSON databases with LRU caching for the least access to the hard disk
 
+🔗 [Documentation](https://github.com/itzkitb/DankDB/blob/master/Documentation.md)
+
+🔗 [Support me](https://www.donationalerts.com/r/itzkitb)
+
 ### 🗃️ Library Functions
 - Getting data in the required format
 - Saving any data
